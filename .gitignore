@@ -38,17 +38,18 @@ ENV/
 dist/
 build/
 
-# Excel files (template examples, not tracked)
-example_Good.xlsx
-EST_Tester.xlsx
-EST_Limits_Summary.xlsx
+# Excel files - block all by default, then allow required templates
 *.xlsx
 *.xls
+!example_Good.xlsx
+!EST_Tester.xlsx
+!EST_Limits_Summary.xlsx
 
-# CSV files
+# CSV files (block test/sample files, allow them to be added explicitly if needed)
 *.csv
+!sample_*.csv
 
-# Output files
+# Output files (these will still be blocked by *.xlsx and *.csv above)
 EST_UPLOAD_*.xlsx
 EST_ERRORS_*.csv
 
