@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# Excel files (template examples, not tracked)
+example_Good.xlsx
+EST_Tester.xlsx
+EST_Limits_Summary.xlsx
+*.xlsx
+*.xls
+
+# CSV files
+*.csv
+
+# Output files
+EST_UPLOAD_*.xlsx
+EST_ERRORS_*.csv
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Images (optional UI resources)
+hnz_logo.png
+est_icon.ico
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test files
+test_*.py
+tests/
