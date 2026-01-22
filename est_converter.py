@@ -375,6 +375,11 @@ def load_fixed_limits_from_summary(summary_path: str = "EST_Limits_Summary.xlsx"
 
     Populates global _LIMITS_CACHE.
     """
+    # If relative path, look in script directory
+    if not os.path.isabs(summary_path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        summary_path = os.path.join(script_dir, summary_path)
+
     global _LIMITS_CACHE
     _LIMITS_CACHE = {}
 
@@ -837,6 +842,11 @@ def load_tester_map(tester_path: str = "EST Tester.xlsx") -> Dict[str, str]:
 
     Returns: Dictionary of S/N → Asset Number
     """
+    # If relative path, look in script directory
+    if not os.path.isabs(tester_path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        tester_path = os.path.join(script_dir, tester_path)
+
     tester_map = {}
 
     if not os.path.exists(tester_path):
@@ -1211,7 +1221,9 @@ class MainWindow(QMainWindow):
                 self.esa615_widget.output_dir = last_output
 
         # Fixed template path (no longer user-selectable)
-        self.template_path = "example_Good.xlsx"
+        # Use script directory to find template files, not working directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.template_path = os.path.join(script_dir, "example_Good.xlsx")
 
     def init_ui(self):
         """Initialize UI components."""
