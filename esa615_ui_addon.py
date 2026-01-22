@@ -114,12 +114,46 @@ class ESA615Widget(QWidget):
         self.status_label.setStyleSheet("color: #666; font-weight: bold;")
 
         self.btn_connect = QPushButton("🔌 Connect")
-        self.btn_connect.setFixedHeight(36)
+        self.btn_connect.setFixedHeight(38)
+        self.btn_connect.setFixedWidth(120)
+        self.btn_connect.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3b82f6, stop:1 #2563eb);
+                color: white;
+                border-radius: 8px;
+                font-weight: 600;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2563eb, stop:1 #1d4ed8);
+            }
+        """)
         self.btn_connect.clicked.connect(self.toggle_connection)
 
         self.btn_refresh = QPushButton("🔄 Refresh")
-        self.btn_refresh.setFixedHeight(36)
+        self.btn_refresh.setFixedHeight(38)
+        self.btn_refresh.setFixedWidth(100)
         self.btn_refresh.setEnabled(False)
+        self.btn_refresh.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10b981, stop:1 #059669);
+                color: white;
+                border-radius: 8px;
+                font-weight: 600;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #059669, stop:1 #047857);
+            }
+            QPushButton:disabled {
+                background: #e5e7eb;
+                color: #9ca3af;
+            }
+        """)
         self.btn_refresh.clicked.connect(self.refresh_file_list)
 
         top_row.addWidget(QLabel("Port:"))
@@ -132,20 +166,73 @@ class ESA615Widget(QWidget):
 
         # 文件列表（带勾选框）
         list_header = QHBoxLayout()
-        self.btn_select_all = QPushButton("☑ Select All")
-        self.btn_select_all.setMaximumWidth(100)
+        self.btn_select_all = QPushButton("☑ All")
+        self.btn_select_all.setFixedWidth(70)
+        self.btn_select_all.setFixedHeight(32)
+        self.btn_select_all.setStyleSheet("""
+            QPushButton {
+                background: #f3f4f6;
+                color: #374151;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                font-size: 9pt;
+                font-weight: 600;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background: #e5e7eb;
+                border-color: #9ca3af;
+            }
+        """)
         self.btn_select_all.clicked.connect(self.select_all)
 
-        self.btn_deselect_all = QPushButton("☐ Clear")
-        self.btn_deselect_all.setMaximumWidth(100)
+        self.btn_deselect_all = QPushButton("☐ None")
+        self.btn_deselect_all.setFixedWidth(70)
+        self.btn_deselect_all.setFixedHeight(32)
+        self.btn_deselect_all.setStyleSheet("""
+            QPushButton {
+                background: #f3f4f6;
+                color: #374151;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                font-size: 9pt;
+                font-weight: 600;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background: #e5e7eb;
+                border-color: #9ca3af;
+            }
+        """)
         self.btn_deselect_all.clicked.connect(self.deselect_all)
 
-        self.btn_delete = QPushButton("🗑 Delete")
-        self.btn_delete.setMaximumWidth(100)
+        self.btn_delete = QPushButton("🗑")
+        self.btn_delete.setFixedWidth(40)
+        self.btn_delete.setFixedHeight(32)
+        self.btn_delete.setStyleSheet("""
+            QPushButton {
+                background: #fef2f2;
+                color: #dc2626;
+                border: 1px solid #fecaca;
+                border-radius: 6px;
+                font-size: 11pt;
+                font-weight: 600;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background: #fee2e2;
+                border-color: #fca5a5;
+            }
+        """)
         self.btn_delete.clicked.connect(self.delete_selected)
 
         self.file_count_label = QLabel("Files: 0")
-        self.file_count_label.setStyleSheet("font-weight: bold;")
+        self.file_count_label.setStyleSheet("""
+            font-weight: 700;
+            color: #6b7280;
+            font-size: 10pt;
+            padding: 5px 10px;
+        """)
 
         list_header.addWidget(QLabel("Test Results on Device:"))
         list_header.addStretch()
@@ -155,38 +242,48 @@ class ESA615Widget(QWidget):
         list_header.addWidget(self.btn_delete)
 
         self.file_list = QListWidget()
-        self.file_list.setMinimumHeight(250)
+        self.file_list.setMinimumHeight(200)
         self.file_list.setStyleSheet("""
             QListWidget {
-                border: 1px solid #ddd;
+                border: 2px solid #e5e7eb;
                 border-radius: 8px;
-                background: white;
-                font-family: 'Consolas', monospace;
+                background: #f9fafb;
+                padding: 5px;
             }
             QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
+                padding: 10px;
+                border-radius: 6px;
+                margin: 2px;
+                background: white;
+                border: 1px solid #e5e7eb;
             }
             QListWidget::item:hover {
-                background: #f5f5f5;
+                background: #f0fdf4;
+                border-color: #10b981;
             }
         """)
 
         # 底部：下载按钮
-        self.btn_download = QPushButton("📥 Download Selected")
+        self.btn_download = QPushButton("📥 Download & Convert to CSV")
         self.btn_download.setEnabled(False)
-        self.btn_download.setMinimumHeight(40)
+        self.btn_download.setMinimumHeight(45)
         self.btn_download.setStyleSheet("""
             QPushButton {
-                background: #10b981;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #10b981, stop:1 #059669);
                 color: white;
                 border: none;
                 border-radius: 8px;
-                font-weight: bold;
+                font-weight: 700;
                 font-size: 11pt;
+                padding: 12px;
             }
             QPushButton:hover {
-                background: #059669;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #059669, stop:1 #047857);
+            }
+            QPushButton:pressed {
+                background: #047857;
             }
             QPushButton:disabled {
                 background: #d1d5db;
