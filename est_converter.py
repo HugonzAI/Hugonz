@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QLabel, QLineEdit, QFileDialog,
-    QMessageBox, QListWidgetItem
+    QMessageBox, QListWidgetItem, QTabWidget
 )
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap
 
 import openpyxl
@@ -1185,9 +1185,20 @@ class MainWindow(QMainWindow):
             }
         """)
 
+        # Load settings
+        self.settings = QSettings()
+
         self.init_ui()
 
-        # Default paths
+        # Load last output folder from settings
+        last_output = self.settings.value("output_folder", "")
+        if last_output and os.path.exists(last_output):
+            self.output_edit.setText(last_output)
+            # Update ESA615Widget output directory if available
+            if ESA615_AVAILABLE and hasattr(self, 'esa615_widget'):
+                self.esa615_widget.output_dir = last_output
+
+        # Fixed template path (no longer user-selectable)
         self.template_path = "example_Good.xlsx"
 
     def init_ui(self):
@@ -1254,27 +1265,50 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(header_card)
 
-        # ESA615 Direct Download Panel (optional extension)
-        if ESA615_AVAILABLE:
-            esa_card = QWidget()
-            esa_card.setStyleSheet("""
-                QWidget {
-                    background: white;
-                    border-radius: 12px;
-                    border: 2px solid #e5e7eb;
-                }
-            """)
-            esa_card_layout = QVBoxLayout(esa_card)
-            esa_card_layout.setContentsMargins(20, 15, 20, 15)
+        # Tab widget for ESA615 and CSV files (shared display area)
+        tab_widget = QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                background: white;
+                border: 2px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 15px;
+            }
+            QTabBar::tab {
+                background: #f3f4f6;
+                color: #4b5563;
+                padding: 12px 24px;
+                margin-right: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-weight: 600;
+                font-size: 11pt;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                color: #10b981;
+                border-bottom: 3px solid #10b981;
+            }
+            QTabBar::tab:hover {
+                background: #e5e7eb;
+            }
+        """)
 
-            esa_label = QLabel("🔌 ESA615 Device (Direct Download)")
+        # Tab 1: ESA615 Device (if available)
+        if ESA615_AVAILABLE:
+            esa_tab = QWidget()
+            esa_tab_layout = QVBoxLayout(esa_tab)
+            esa_tab_layout.setContentsMargins(10, 10, 10, 10)
+            esa_tab_layout.setSpacing(12)
+
+            esa_label = QLabel("🔌 ESA615 Device Files")
             esa_label.setStyleSheet("""
                 font-weight: 700;
                 font-size: 12pt;
                 color: #10b981;
                 padding-bottom: 8px;
             """)
-            esa_card_layout.addWidget(esa_label)
+            esa_tab_layout.addWidget(esa_label)
 
             # Create ESA615Widget with output folder and log callback
             self.esa615_widget = ESA615Widget(
@@ -1282,31 +1316,24 @@ class MainWindow(QMainWindow):
                 log_callback=self.log_message
             )
             self.esa615_widget.files_downloaded.connect(self.add_downloaded_files)
-            esa_card_layout.addWidget(self.esa615_widget)
+            esa_tab_layout.addWidget(self.esa615_widget)
 
-            layout.addWidget(esa_card)
+            tab_widget.addTab(esa_tab, "🔌 ESA615 Device")
 
-        # File list section in card
-        file_card = QWidget()
-        file_card.setStyleSheet("""
-            QWidget {
-                background: white;
-                border-radius: 12px;
-                border: 2px solid #e5e7eb;
-            }
-        """)
-        file_card_layout = QVBoxLayout(file_card)
-        file_card_layout.setContentsMargins(20, 15, 20, 15)
-        file_card_layout.setSpacing(12)
+        # Tab 2: CSV Files
+        csv_tab = QWidget()
+        csv_tab_layout = QVBoxLayout(csv_tab)
+        csv_tab_layout.setContentsMargins(10, 10, 10, 10)
+        csv_tab_layout.setSpacing(12)
 
-        file_group_label = QLabel("📁 CSV Files")
+        file_group_label = QLabel("📁 CSV Files for Conversion")
         file_group_label.setStyleSheet("""
             font-weight: 700;
             font-size: 12pt;
             color: #3b82f6;
             padding-bottom: 8px;
         """)
-        file_card_layout.addWidget(file_group_label)
+        csv_tab_layout.addWidget(file_group_label)
 
         # File list with improved styling
         self.file_list = FileListWidget()
@@ -1335,7 +1362,7 @@ class MainWindow(QMainWindow):
                 color: #065f46;
             }
         """)
-        file_card_layout.addWidget(self.file_list)
+        csv_tab_layout.addWidget(self.file_list)
 
         # File buttons with icons
         file_btn_layout = QHBoxLayout()
@@ -1385,10 +1412,12 @@ class MainWindow(QMainWindow):
         clear_btn.clicked.connect(self.file_list.clear)
         file_btn_layout.addWidget(clear_btn)
 
-        file_card_layout.addLayout(file_btn_layout)
-        layout.addWidget(file_card)
+        csv_tab_layout.addLayout(file_btn_layout)
+        tab_widget.addTab(csv_tab, "📁 CSV Files")
 
-        # Configuration section in card
+        layout.addWidget(tab_widget)
+
+        # Configuration section in card (only output folder, template is fixed)
         config_card = QWidget()
         config_card.setStyleSheet("""
             QWidget {
@@ -1429,24 +1458,17 @@ class MainWindow(QMainWindow):
         output_layout.addWidget(output_btn)
         config_layout.addLayout(output_layout)
 
-        # Template section
-        template_label = QLabel("Template File:")
-        template_label.setStyleSheet("font-weight: 600; color: #4b5563;")
-        config_layout.addWidget(template_label)
-
-        template_layout = QHBoxLayout()
-        template_layout.setSpacing(10)
-        self.template_edit = QLineEdit()
-        self.template_edit.setText("example_Good.xlsx")
-        self.template_edit.setMinimumHeight(45)
-        template_layout.addWidget(self.template_edit)
-
-        template_btn = QPushButton("Browse")
-        template_btn.setFixedWidth(100)
-        template_btn.setMinimumHeight(45)
-        template_btn.clicked.connect(self.browse_template)
-        template_layout.addWidget(template_btn)
-        config_layout.addLayout(template_layout)
+        # Note about fixed template
+        template_note = QLabel("📋 Template: example_Good.xlsx (fixed)")
+        template_note.setStyleSheet("""
+            color: #6b7280;
+            font-size: 9pt;
+            font-style: italic;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 6px;
+        """)
+        config_layout.addWidget(template_note)
 
         layout.addWidget(config_card)
 
@@ -1526,21 +1548,11 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
         if folder:
             self.output_edit.setText(folder)
+            # Save to settings
+            self.settings.setValue("output_folder", folder)
             # Update ESA615Widget output directory if available
             if ESA615_AVAILABLE and hasattr(self, 'esa615_widget'):
                 self.esa615_widget.output_dir = folder
-
-    def browse_template(self):
-        """Browse for template XLSX file."""
-        file, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Template XLSX",
-            "",
-            "Excel Files (*.xlsx)"
-        )
-        if file:
-            self.template_edit.setText(file)
-            self.template_path = file
 
     def start_conversion(self):
         """Start conversion process."""
@@ -1554,9 +1566,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid Output", "Please select a valid output folder.")
             return
 
-        template_path = self.template_edit.text().strip()
-        if not template_path or not os.path.exists(template_path):
-            QMessageBox.warning(self, "Invalid Template", f"Template file not found: {template_path}")
+        # Template is fixed to example_Good.xlsx
+        template_path = self.template_path
+        if not os.path.exists(template_path):
+            QMessageBox.warning(self, "Template Missing",
+                              f"Required template file not found: {template_path}\n"
+                              f"Please ensure example_Good.xlsx is in the application directory.")
             return
 
         # Collect file paths
