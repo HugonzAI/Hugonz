@@ -523,19 +523,31 @@ def parse_fluke_file(csv_path: str) -> Tuple[Optional[FlukeParsed], Optional[str
             if len(row) < 2:
                 continue
 
-            key = str(row[0]).strip().upper()
-            value = str(row[1]).strip() if len(row) > 1 else ""
+            # Check all columns in the row for key-value pairs
+            # Fluke CSV format may have multiple key-value pairs per row
+            for i in range(len(row)):
+                if not row[i] or ':' not in str(row[i]):
+                    continue
 
-            if "OPERATOR" in key:
-                operator = value
-            elif "EQUIPMENT" in key or "ASSET" in key:
-                equipment = value
-            elif "TESTER" in key and "SERIAL" in key:
-                tester_sn = value
-            elif "TEMPLATE" in key:
-                template = value
-            elif "DATE" in key or "TIME" in key:
-                test_date = value
+                key = str(row[i]).strip().upper()
+                # Value is typically 2 columns after key (skip empty column)
+                value_idx = i + 2 if i + 2 < len(row) else i + 1
+                value = str(row[value_idx]).strip() if value_idx < len(row) and row[value_idx] else ""
+
+                if not value:  # If i+2 is empty, try i+1
+                    value_idx = i + 1
+                    value = str(row[value_idx]).strip() if value_idx < len(row) and row[value_idx] else ""
+
+                if "OPERATOR" in key and not operator:
+                    operator = value
+                elif ("EQUIPMENT" in key or "ASSET" in key) and not equipment:
+                    equipment = value
+                elif "SERIAL" in key and i < 5 and not tester_sn:  # Serial Number in left columns = Tester S/N
+                    tester_sn = value
+                elif "TEMPLATE" in key and not template:
+                    template = value
+                elif "DATE" in key and "TIME" in key and not test_date:
+                    test_date = value
 
         # Validate required fields
         if not equipment:
