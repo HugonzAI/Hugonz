@@ -1,0 +1,68 @@
+﻿,,,,,,,Date :05/03/2025
+
+Test Setup
+,,,,,DUT Information
+
+Operator ID :,,STENY,,,Equipment Number :,,WHA252760
+Calibration Tech :,,GT,,,Serial Number :,,
+Calibration Date :,,06/25/2020,,,Manufacturer :,,
+Firmware Version :,,2.08.01,,,Model :,,
+Serial Number :,,2665044,,,Location :,,
+Date & Time :,,30/07/2024 & 13:06,,,Other :,,
+JOB Name :,,
+
+
+Template Information
+
+Template Name :,,_1003 - ASNZS3551 CLASS 1 TYPE CF,,,Standard :,,CUSTOM
+Pause after Power ON:,,NO,,,Pause before Power OFF:,,NO
+Power ON delay:,,1,,,Power OFF delay:,,0
+Test Speed:,,RAPID,,,Test Mode:,,AUTO
+Halt on Test Failure:,,YES,,,Multi PE Test:,,YES
+Include Time:,,YES,,,Multi Resstore:,,WORST/LAST
+Insulation Resistance Voltage:,,500V,,,Reverse Polarity:,,YES
+Multi Enclosure Test :,,YES,,,Classification:,,I
+
+
+
+PLC Configuration-Applied part setup
+
+AP Name,AP Type,AP Num
+
+1x10 Box,CF,1
+
+ESA615 Test Results
+
+Test Name,,,,,Value,High Limits,Low Limits,Status
+
+Protective Earth Resistance,,,,, 0.103 Ohm,.2,-,P
+Mains Voltage,,,,,,,,P
+,Live to Neutral,,,, 232.2 V,-,-,P
+,Neutral to Earth,,,, 0.1 V,-,-,P
+,Live to Earth,,,, 232.2 V,-,-,P
+Insulation Resistance,,,,,,,,P
+,Mains to Protective Earth,,,, 999 MOhm,-,10,P
+Enclosure Leakage Current,,,,,,,,P
+,Normal Condition,,,, 0.6 uA-OPEN,100,-,P
+,Open Earth,,,, 38.1 uA-OPEN,500,-,P
+,Open Neutral,,,, 0.8 uA-OPEN,500,-,P
+Earth Leakage Current,,,,,,,,P
+,Normal Condition,,,, 38.0 uA-OPEN,5000,-,P
+,Open Neutral,,,, 70.4 uA-OPEN,10000,-,P
+Patient Leakage Current,,,,,,,,P
+,Normal Condition,,,,,,,P
+,,1x10 Box,,, 0.9 uA-OPEN,10,-,P
+,Open Earth,,,,,,,P
+,,1x10 Box,,, 1.2 uA-OPEN,50,-,P
+,Open Neutral,,,,,,,P
+,,1x10 Box,,, 1.2 uA-OPEN,50,-,P
+Mains on Applied Parts,,,,,,,,P
+,Single Fault Condition,,,,,,,P
+,,1x10 Box,,, 4.9 uA-OPEN-MAPN,50,-,P
+
+
+
+
+
+ ,,,,,,, _________ 
+ ,,,,,,,Signature
