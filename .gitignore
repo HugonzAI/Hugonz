@@ -49,6 +49,9 @@ build/
 *.csv
 !sample_*.csv
 
+# DTA files (ESA615 binary format - typically downloaded then converted to CSV)
+*.dta
+
 # Output files (these will still be blocked by *.xlsx and *.csv above)
 EST_UPLOAD_*.xlsx
 EST_ERRORS_*.csv

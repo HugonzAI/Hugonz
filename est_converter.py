@@ -39,6 +39,14 @@ import openpyxl
 from openpyxl import load_workbook
 from dateutil import parser as date_parser
 
+# ESA615 Extension Module (optional - requires pyserial)
+try:
+    from esa615_ui_addon import ESA615Widget
+    ESA615_AVAILABLE = True
+except ImportError:
+    ESA615_AVAILABLE = False
+    print("Warning: ESA615 module not available (requires pyserial)")
+
 
 # ============================================================================
 # SECTION 1: DATA MODELS
@@ -1098,6 +1106,26 @@ class MainWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
+        # ESA615 Direct Download Panel (optional extension)
+        if ESA615_AVAILABLE:
+            esa_label = QLabel("ESA615 Device (Direct Download):")
+            esa_label.setStyleSheet("font-weight: bold; margin-top: 10px; color: #10b981;")
+            layout.addWidget(esa_label)
+
+            # Create ESA615Widget with output folder and log callback
+            self.esa615_widget = ESA615Widget(
+                output_dir=os.path.abspath("."),  # Default to current directory
+                log_callback=self.log_message
+            )
+            # Connect signal to automatically add downloaded CSV files to main list
+            self.esa615_widget.files_downloaded.connect(self.add_downloaded_files)
+            layout.addWidget(self.esa615_widget)
+
+            # Separator
+            separator = QLabel("─" * 100)
+            separator.setStyleSheet("color: #ddd; margin: 10px 0;")
+            layout.addWidget(separator)
+
         # File list section
         file_group_label = QLabel("CSV Files (Drag and Drop or Add Files):")
         file_group_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
@@ -1192,6 +1220,16 @@ class MainWindow(QMainWindow):
         for file in files:
             self.file_list.add_file(file)
 
+    def add_downloaded_files(self, csv_files):
+        """Add downloaded CSV files from ESA615 to file list."""
+        for csv_path in csv_files:
+            self.file_list.add_file(csv_path)
+        self.log_message(f"✓ Added {len(csv_files)} files to conversion list")
+
+    def log_message(self, message):
+        """Log message to progress label."""
+        self.progress_label.setText(message)
+
     def remove_selected(self):
         """Remove selected files from list."""
         for item in self.file_list.selectedItems():
@@ -1202,6 +1240,9 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
         if folder:
             self.output_edit.setText(folder)
+            # Update ESA615Widget output directory if available
+            if ESA615_AVAILABLE and hasattr(self, 'esa615_widget'):
+                self.esa615_widget.output_dir = folder
 
     def browse_template(self):
         """Browse for template XLSX file."""
