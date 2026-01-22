@@ -9,7 +9,8 @@ EST Converter is a desktop application that converts Fluke ESA615 electrical saf
 
 ## Key Features
 
-- **Input:** Fluke ESA615 exported CSV files
+- **Input:** Fluke ESA615 exported CSV files OR direct device download (DTA → CSV)
+- **ESA615 Direct Download:** Connect via serial port, download DTA files, auto-convert to CSV (requires pyserial)
 - **Output:** Single consolidated XLSX file (EST_UPLOAD_YYYYMMDD_HHMMSS.xlsx)
 - **Standards Support:** AS/NZS 3551 and AS/NZS 3760
 - **Fixed Limits:** Uses predefined limits from EST_Limits_Summary.xlsx (ignores Fluke CSV limits)
@@ -35,6 +36,7 @@ Required packages:
 - PySide6 (UI framework)
 - openpyxl (Excel file handling)
 - python-dateutil (Date parsing)
+- pyserial (Serial communication - optional, for ESA615 direct download)
 
 ### Required Files (Same Directory as Script)
 
@@ -59,6 +61,8 @@ python est_converter.py
 
 ### Workflow
 
+#### Option A: CSV File Conversion (Traditional)
+
 1. **Add CSV Files:**
    - Click "Add Files" or drag-and-drop CSV files into the list
    - Hover over filenames to see full paths
@@ -70,6 +74,30 @@ python est_converter.py
    - Click "Convert" to process all files
    - Progress is shown in real-time
    - Success/error summary displayed on completion
+
+#### Option B: ESA615 Direct Download (New Feature)
+
+1. **Connect Device:**
+   - Connect ESA615 to computer via USB/Serial cable
+   - Select COM port (default: COM8)
+   - Click "🔌 Connect"
+   - Status indicator turns green when connected
+
+2. **Browse Test Files:**
+   - Click "🔄 Refresh" to list all DTA files on device
+   - Use checkboxes to select files to download
+   - "☑ Select All" or "☐ Clear" for batch selection
+
+3. **Download and Convert:**
+   - Click "📥 Download Selected"
+   - Files are automatically:
+     - Downloaded from ESA615 (DTA format)
+     - Converted to CSV format
+     - Added to the CSV file list
+   - Then use "Convert" button to generate XLSX output
+
+4. **Disconnect:**
+   - Click "🔌 Disconnect" when done
 
 ### Output Files
 
@@ -293,6 +321,46 @@ Must follow the "equivalence principle":
 - New sources should produce FlukeParsed equivalent to CSV parsing
 - NO special cases in `build_interface_row()` for new sources
 - All input types go through same mapping layer
+
+## ESA615 Extension (V3.3+)
+
+### Architecture
+
+The ESA615 direct download feature is implemented as a **pure extension** that follows baseline principles:
+
+```
+ESA615 Device → DTA File → CSV File → parse_fluke_file() → [Existing Pipeline] → XLSX
+     ↑              ↑            ↑              ↑
+  Serial       Connector   DTA-to-CSV    Core Parser
+  (new)         (new)      Converter      (unchanged)
+                              (new)
+```
+
+**Key Design Principles:**
+1. **No Core Modification:** The four protected functions remain untouched
+2. **Equivalence Conversion:** DTA → CSV converter produces CSV identical to manual Fluke exports
+3. **UI-Only Integration:** ESA615Widget is added to UI layer, doesn't alter conversion logic
+4. **Optional Dependency:** Requires `pyserial`, gracefully disabled if not installed
+
+### Module Structure
+
+**New Modules (Independent):**
+- `esa615_connector.py` - Serial communication with ESA615 device
+- `dta_to_csv_converter.py` - Converts DTA format to CSV format compatible with parser
+- `esa615_ui_addon.py` - PySide6 widget for device control and file management
+
+**Integration Point:**
+- `est_converter.py` (MainWindow only) - Optional import and UI integration
+
+### CSV Compatibility
+
+The DTA-to-CSV converter outputs CSV in the **exact format** expected by `parse_fluke_file()`:
+- Multi-column metadata format (Operator/Equipment on same row)
+- Test Setup section
+- Template Information section
+- ESA615 Test Results table with proper column structure
+
+This ensures the downloaded files are processed identically to manually exported CSV files.
 
 ## Regression Testing Recommendations
 

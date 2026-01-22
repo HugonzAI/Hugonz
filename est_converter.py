@@ -30,14 +30,22 @@ from dataclasses import dataclass, field
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QLabel, QLineEdit, QFileDialog,
-    QMessageBox, QListWidgetItem
+    QMessageBox, QListWidgetItem, QTabWidget
 )
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap
 
 import openpyxl
 from openpyxl import load_workbook
 from dateutil import parser as date_parser
+
+# ESA615 Extension Module (optional - requires pyserial)
+try:
+    from esa615_ui_addon import ESA615Widget
+    ESA615_AVAILABLE = True
+except ImportError:
+    ESA615_AVAILABLE = False
+    print("Warning: ESA615 module not available (requires pyserial)")
 
 
 # ============================================================================
@@ -505,9 +513,21 @@ def parse_fluke_file(csv_path: str) -> Tuple[Optional[FlukeParsed], Optional[str
         If failed: (None, error_message)
     """
     try:
-        with open(csv_path, 'r', encoding='utf-8-sig') as f:
-            reader = csv.reader(f)
-            rows = list(reader)
+        # Try multiple encodings to handle different CSV file formats
+        rows = None
+        last_error = None
+        for encoding in ['utf-8-sig', 'utf-8', 'windows-1252', 'latin-1', 'iso-8859-1']:
+            try:
+                with open(csv_path, 'r', encoding=encoding) as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+                break  # Success, exit loop
+            except (UnicodeDecodeError, UnicodeError) as e:
+                last_error = e
+                continue  # Try next encoding
+
+        if rows is None:
+            return None, f"Could not decode CSV file with any common encoding. Last error: {last_error}"
 
         if len(rows) < 10:
             return None, "CSV file too short"
@@ -523,19 +543,31 @@ def parse_fluke_file(csv_path: str) -> Tuple[Optional[FlukeParsed], Optional[str
             if len(row) < 2:
                 continue
 
-            key = str(row[0]).strip().upper()
-            value = str(row[1]).strip() if len(row) > 1 else ""
+            # Check all columns in the row for key-value pairs
+            # Fluke CSV format may have multiple key-value pairs per row
+            for i in range(len(row)):
+                if not row[i] or ':' not in str(row[i]):
+                    continue
 
-            if "OPERATOR" in key:
-                operator = value
-            elif "EQUIPMENT" in key or "ASSET" in key:
-                equipment = value
-            elif "TESTER" in key and "SERIAL" in key:
-                tester_sn = value
-            elif "TEMPLATE" in key:
-                template = value
-            elif "DATE" in key or "TIME" in key:
-                test_date = value
+                key = str(row[i]).strip().upper()
+                # Value is typically 2 columns after key (skip empty column)
+                value_idx = i + 2 if i + 2 < len(row) else i + 1
+                value = str(row[value_idx]).strip() if value_idx < len(row) and row[value_idx] else ""
+
+                if not value:  # If i+2 is empty, try i+1
+                    value_idx = i + 1
+                    value = str(row[value_idx]).strip() if value_idx < len(row) and row[value_idx] else ""
+
+                if "OPERATOR" in key and not operator:
+                    operator = value
+                elif ("EQUIPMENT" in key or "ASSET" in key) and not equipment:
+                    equipment = value
+                elif "SERIAL" in key and i < 5 and not tester_sn:  # Serial Number in left columns = Tester S/N
+                    tester_sn = value
+                elif "TEMPLATE" in key and not template:
+                    template = value
+                elif "DATE" in key and "TIME" in key and not test_date:
+                    test_date = value
 
         # Validate required fields
         if not equipment:
@@ -1020,16 +1052,64 @@ class ConvertThread(QThread):
 
 
 class FileListWidget(QListWidget):
-    """Custom list widget with drag-and-drop support."""
+    """Custom list widget with drag-and-drop support and visual feedback."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setDragDropMode(QListWidget.InternalMove)
+        self.drag_active = False
+
+        # Set placeholder hint
+        self.setMinimumHeight(200)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
+            self.drag_active = True
+            self.setStyleSheet("""
+                QListWidget {
+                    background: #ecfdf5;
+                    border: 3px dashed #10b981;
+                    border-radius: 8px;
+                    padding: 8px;
+                }
+                QListWidget::item {
+                    padding: 12px;
+                    border-radius: 6px;
+                    margin: 3px 0;
+                    background: white;
+                    border: 1px solid #10b981;
+                }
+            """)
+
+    def dragLeaveEvent(self, event):
+        self.drag_active = False
+        self.setStyleSheet("""
+            QListWidget {
+                background: #f9fafb;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 10pt;
+            }
+            QListWidget::item {
+                padding: 12px;
+                border-radius: 6px;
+                margin: 3px 0;
+                background: white;
+                border: 1px solid #e5e7eb;
+            }
+            QListWidget::item:hover {
+                background: #f0fdf4;
+                border-color: #10b981;
+            }
+            QListWidget::item:selected {
+                background: #d1fae5;
+                border-color: #10b981;
+                color: #065f46;
+            }
+        """)
 
     def dropEvent(self, event: QDropEvent):
         if event.mimeData().hasUrls():
@@ -1039,11 +1119,21 @@ class FileListWidget(QListWidget):
                     self.add_file(path)
             event.acceptProposedAction()
 
+        self.drag_active = False
+        # Restore normal style
+        self.dragLeaveEvent(None)
+
     def add_file(self, path: str):
         """Add file to list with filename display and full path tooltip."""
         filename = os.path.basename(path)
-        item = QListWidgetItem(filename)
-        item.setToolTip(path)
+
+        # Check if file already exists
+        for i in range(self.count()):
+            if self.item(i).data(Qt.UserRole) == path:
+                return  # Don't add duplicates
+
+        item = QListWidgetItem(f"📄 {filename}")
+        item.setToolTip(f"Full path: {path}\nClick to select")
         item.setData(Qt.UserRole, path)  # Store full path
         self.addItem(item)
 
@@ -1053,16 +1143,74 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("EST Converter V3.3")
-        self.setMinimumSize(800, 600)
+        self.setWindowTitle("EST Converter V3.3 - Electrical Safety Testing")
+        self.setMinimumSize(1000, 700)
 
         # Try to load icon
         if os.path.exists("est_icon.ico"):
             self.setWindowIcon(QIcon("est_icon.ico"))
 
+        # Apply modern stylesheet
+        self.setStyleSheet("""
+            QMainWindow {
+                background: #f9fafb;
+            }
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 10pt;
+            }
+            QLabel {
+                color: #111827;
+            }
+            QLineEdit {
+                padding: 10px 15px;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                background: white;
+                color: #111827;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 2px solid #10b981;
+                outline: none;
+            }
+            QPushButton {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10b981, stop:1 #059669);
+                color: white;
+                font-weight: 600;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #059669, stop:1 #047857);
+            }
+            QPushButton:pressed {
+                background: #047857;
+            }
+            QPushButton:disabled {
+                background: #d1d5db;
+                color: #9ca3af;
+            }
+        """)
+
+        # Load settings
+        self.settings = QSettings()
+
         self.init_ui()
 
-        # Default paths
+        # Load last output folder from settings
+        last_output = self.settings.value("output_folder", "")
+        if last_output and os.path.exists(last_output):
+            self.output_edit.setText(last_output)
+            # Update ESA615Widget output directory if available
+            if ESA615_AVAILABLE and hasattr(self, 'esa615_widget'):
+                self.esa615_widget.output_dir = last_output
+
+        # Fixed template path (no longer user-selectable)
         self.template_path = "example_Good.xlsx"
 
     def init_ui(self):
@@ -1070,100 +1218,327 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Header Section (Logo + Title in card)
+        header_card = QWidget()
+        header_card.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #10b981, stop:1 #3b82f6);
+                border-radius: 15px;
+                padding: 20px;
+            }
+        """)
+        header_layout = QHBoxLayout(header_card)
 
         # Logo (optional)
         if os.path.exists("hnz_logo.png"):
             logo_label = QLabel()
+            logo_label.setStyleSheet("background: transparent;")
             pixmap = QPixmap("hnz_logo.png")
-            scaled = pixmap.scaledToWidth(200, Qt.SmoothTransformation)
+            scaled = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
             logo_label.setPixmap(scaled)
-            logo_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(logo_label)
+            logo_label.setFixedSize(60, 60)
+            logo_label.setScaledContents(False)
+            header_layout.addWidget(logo_label)
 
-        # Title
-        title = QLabel("EST Converter - Fluke ESA615 to Interface Transactions")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # Title with subtitle
+        title_container = QWidget()
+        title_container.setStyleSheet("background: transparent;")
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setSpacing(5)
+        title_layout.setContentsMargins(0, 0, 0, 0)
 
-        # File list section
-        file_group_label = QLabel("CSV Files (Drag and Drop or Add Files):")
-        file_group_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(file_group_label)
+        title = QLabel("EST Converter")
+        title.setStyleSheet("""
+            background: transparent;
+            color: white;
+            font-size: 24pt;
+            font-weight: 700;
+            letter-spacing: -1px;
+        """)
 
+        subtitle = QLabel("Fluke ESA615 Electrical Safety Testing")
+        subtitle.setStyleSheet("""
+            background: transparent;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 11pt;
+            font-weight: 400;
+        """)
+
+        version_label = QLabel("Version 3.3 Baseline")
+        version_label.setStyleSheet("""
+            background: transparent;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 9pt;
+            margin-top: 3px;
+        """)
+
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
+        title_layout.addWidget(version_label)
+        header_layout.addWidget(title_container)
+        header_layout.addStretch()
+
+        layout.addWidget(header_card)
+
+        # Tab widget for ESA615 and CSV files (shared display area)
+        tab_widget = QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                background: white;
+                border: 2px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 15px;
+                margin-top: -1px;
+            }
+            QTabBar::tab {
+                background: #f3f4f6;
+                color: #4b5563;
+                padding: 12px 28px;
+                margin-right: 4px;
+                border: 2px solid #e5e7eb;
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-weight: 600;
+                font-size: 11pt;
+                min-width: 120px;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                color: #10b981;
+                border-color: #e5e7eb;
+                border-bottom: 2px solid white;
+                margin-bottom: -2px;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e5e7eb;
+            }
+        """)
+
+        # Tab 1: ESA615 Device (if available)
+        if ESA615_AVAILABLE:
+            esa_tab = QWidget()
+            esa_tab_layout = QVBoxLayout(esa_tab)
+            esa_tab_layout.setContentsMargins(10, 10, 10, 10)
+            esa_tab_layout.setSpacing(12)
+
+            esa_label = QLabel("🔌 ESA615 Device Files")
+            esa_label.setStyleSheet("""
+                background: transparent;
+                font-weight: 700;
+                font-size: 12pt;
+                color: #10b981;
+                padding-bottom: 8px;
+            """)
+            esa_tab_layout.addWidget(esa_label)
+
+            # Create ESA615Widget with output folder and log callback
+            self.esa615_widget = ESA615Widget(
+                output_dir=os.path.abspath("."),
+                log_callback=self.log_message
+            )
+            self.esa615_widget.files_downloaded.connect(self.add_downloaded_files)
+            esa_tab_layout.addWidget(self.esa615_widget)
+
+            tab_widget.addTab(esa_tab, "🔌 ESA615 Device")
+
+        # Tab 2: CSV Files
+        csv_tab = QWidget()
+        csv_tab_layout = QVBoxLayout(csv_tab)
+        csv_tab_layout.setContentsMargins(10, 10, 10, 10)
+        csv_tab_layout.setSpacing(12)
+
+        file_group_label = QLabel("📁 CSV Files for Conversion")
+        file_group_label.setStyleSheet("""
+            background: transparent;
+            font-weight: 700;
+            font-size: 12pt;
+            color: #3b82f6;
+            padding-bottom: 8px;
+        """)
+        csv_tab_layout.addWidget(file_group_label)
+
+        # File list with improved styling
         self.file_list = FileListWidget()
-        layout.addWidget(self.file_list)
+        self.file_list.setStyleSheet("""
+            QListWidget {
+                background: #f9fafb;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 10pt;
+            }
+            QListWidget::item {
+                padding: 12px;
+                border-radius: 6px;
+                margin: 3px 0;
+                background: white;
+                border: 1px solid #e5e7eb;
+            }
+            QListWidget::item:hover {
+                background: #f0fdf4;
+                border-color: #10b981;
+            }
+            QListWidget::item:selected {
+                background: #d1fae5;
+                border-color: #10b981;
+                color: #065f46;
+            }
+        """)
+        csv_tab_layout.addWidget(self.file_list)
 
-        # File buttons
+        # File buttons with icons
         file_btn_layout = QHBoxLayout()
+        file_btn_layout.setSpacing(10)
 
-        add_btn = QPushButton("Add Files")
+        add_btn = QPushButton("📄 Add Files")
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3b82f6, stop:1 #2563eb);
+                padding: 10px 20px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2563eb, stop:1 #1d4ed8);
+            }
+        """)
         add_btn.clicked.connect(self.add_files)
         file_btn_layout.addWidget(add_btn)
 
-        remove_btn = QPushButton("Remove Selected")
+        remove_btn = QPushButton("🗑 Remove")
+        remove_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ef4444, stop:1 #dc2626);
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #dc2626, stop:1 #b91c1c);
+            }
+        """)
         remove_btn.clicked.connect(self.remove_selected)
         file_btn_layout.addWidget(remove_btn)
 
-        clear_btn = QPushButton("Clear All")
+        clear_btn = QPushButton("✖ Clear All")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #6b7280, stop:1 #4b5563);
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4b5563, stop:1 #374151);
+            }
+        """)
         clear_btn.clicked.connect(self.file_list.clear)
         file_btn_layout.addWidget(clear_btn)
 
-        layout.addLayout(file_btn_layout)
+        csv_tab_layout.addLayout(file_btn_layout)
+        tab_widget.addTab(csv_tab, "📁 CSV Files")
 
-        # Output folder section
+        layout.addWidget(tab_widget)
+
+        # Configuration section in card (only output folder, template is fixed)
+        config_card = QWidget()
+        config_card.setStyleSheet("""
+            QWidget {
+                background: white;
+                border-radius: 12px;
+                border: 2px solid #e5e7eb;
+            }
+        """)
+        config_layout = QVBoxLayout(config_card)
+        config_layout.setContentsMargins(20, 15, 20, 15)
+        config_layout.setSpacing(15)
+
+        config_title = QLabel("⚙ Configuration")
+        config_title.setStyleSheet("""
+            font-weight: 700;
+            font-size: 12pt;
+            color: #7c3aed;
+            padding-bottom: 8px;
+        """)
+        config_layout.addWidget(config_title)
+
+        # Output folder
         output_label = QLabel("Output Folder:")
-        output_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(output_label)
+        output_label.setStyleSheet("font-weight: 600; color: #4b5563;")
+        config_layout.addWidget(output_label)
 
         output_layout = QHBoxLayout()
+        output_layout.setSpacing(10)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output folder...")
+        self.output_edit.setPlaceholderText("📂 Select output folder...")
+        self.output_edit.setMinimumHeight(45)
         output_layout.addWidget(self.output_edit)
 
         output_btn = QPushButton("Browse")
+        output_btn.setFixedWidth(100)
+        output_btn.setMinimumHeight(45)
         output_btn.clicked.connect(self.browse_output)
         output_layout.addWidget(output_btn)
+        config_layout.addLayout(output_layout)
 
-        layout.addLayout(output_layout)
+        # Note about fixed template
+        template_note = QLabel("📋 Template: example_Good.xlsx (fixed)")
+        template_note.setStyleSheet("""
+            color: #6b7280;
+            font-size: 9pt;
+            font-style: italic;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 6px;
+        """)
+        config_layout.addWidget(template_note)
 
-        # Template section (can be hidden in future versions)
-        template_label = QLabel("Template File:")
-        template_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(template_label)
+        layout.addWidget(config_card)
 
-        template_layout = QHBoxLayout()
-        self.template_edit = QLineEdit()
-        self.template_edit.setText("example_Good.xlsx")
-        template_layout.addWidget(self.template_edit)
-
-        template_btn = QPushButton("Browse")
-        template_btn.clicked.connect(self.browse_template)
-        template_layout.addWidget(template_btn)
-
-        layout.addLayout(template_layout)
-
-        # Progress label
+        # Progress label in status bar style
         self.progress_label = QLabel("")
-        self.progress_label.setStyleSheet("margin-top: 10px; color: #666;")
+        self.progress_label.setStyleSheet("""
+            QLabel {
+                background: #f3f4f6;
+                border-radius: 8px;
+                padding: 12px 15px;
+                color: #374151;
+                font-weight: 500;
+                border: 1px solid #e5e7eb;
+            }
+        """)
+        self.progress_label.setMinimumHeight(45)
         layout.addWidget(self.progress_label)
 
-        # Convert button
-        self.convert_btn = QPushButton("Convert")
+        # Convert button - Large and prominent
+        self.convert_btn = QPushButton("🚀 Convert Files to XLSX")
+        self.convert_btn.setMinimumHeight(55)
         self.convert_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #10b981, stop:0.5 #059669, stop:1 #047857);
                 color: white;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px;
-                margin-top: 10px;
+                font-size: 13pt;
+                font-weight: 700;
+                padding: 15px;
+                border-radius: 12px;
+                border: none;
+                letter-spacing: 0.5px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #059669, stop:0.5 #047857, stop:1 #065f46);
+            }
+            QPushButton:pressed {
+                background: #065f46;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background: #d1d5db;
+                color: #9ca3af;
             }
         """)
         self.convert_btn.clicked.connect(self.start_conversion)
@@ -1180,6 +1555,16 @@ class MainWindow(QMainWindow):
         for file in files:
             self.file_list.add_file(file)
 
+    def add_downloaded_files(self, csv_files):
+        """Add downloaded CSV files from ESA615 to file list."""
+        for csv_path in csv_files:
+            self.file_list.add_file(csv_path)
+        self.log_message(f"✓ Added {len(csv_files)} files to conversion list")
+
+    def log_message(self, message):
+        """Log message to progress label."""
+        self.progress_label.setText(message)
+
     def remove_selected(self):
         """Remove selected files from list."""
         for item in self.file_list.selectedItems():
@@ -1190,18 +1575,11 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
         if folder:
             self.output_edit.setText(folder)
-
-    def browse_template(self):
-        """Browse for template XLSX file."""
-        file, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Template XLSX",
-            "",
-            "Excel Files (*.xlsx)"
-        )
-        if file:
-            self.template_edit.setText(file)
-            self.template_path = file
+            # Save to settings
+            self.settings.setValue("output_folder", folder)
+            # Update ESA615Widget output directory if available
+            if ESA615_AVAILABLE and hasattr(self, 'esa615_widget'):
+                self.esa615_widget.output_dir = folder
 
     def start_conversion(self):
         """Start conversion process."""
@@ -1215,9 +1593,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid Output", "Please select a valid output folder.")
             return
 
-        template_path = self.template_edit.text().strip()
-        if not template_path or not os.path.exists(template_path):
-            QMessageBox.warning(self, "Invalid Template", f"Template file not found: {template_path}")
+        # Template is fixed to example_Good.xlsx
+        template_path = self.template_path
+        if not os.path.exists(template_path):
+            QMessageBox.warning(self, "Template Missing",
+                              f"Required template file not found: {template_path}\n"
+                              f"Please ensure example_Good.xlsx is in the application directory.")
             return
 
         # Collect file paths
