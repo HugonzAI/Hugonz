@@ -39,6 +39,20 @@ class ESA615Connector:
             )
             time.sleep(0.3)
             return True, f"Connected to {self.port} @ {self.baudrate} baud"
+        except PermissionError:
+            return False, (f"⚠ Port {self.port} access denied!\n"
+                          f"Solutions:\n"
+                          f"• Close other programs using this port\n"
+                          f"• Run as Administrator\n"
+                          f"• Reconnect USB cable and retry")
+        except serial.SerialException as e:
+            if "could not open port" in str(e):
+                return False, (f"⚠ Cannot open {self.port}!\n"
+                              f"Check:\n"
+                              f"• Device is connected\n"
+                              f"• Correct port selected (check Device Manager)\n"
+                              f"• USB cable is working")
+            return False, f"Serial error: {e}"
         except Exception as e:
             return False, f"Connection failed: {e}"
 
