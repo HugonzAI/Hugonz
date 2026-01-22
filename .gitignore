@@ -37,6 +37,9 @@ ENV/
 *.spec
 dist/
 build/
+*.manifest
+*.exe
+version_info.txt
 
 # Excel files - block all by default, then allow required templates
 *.xlsx
