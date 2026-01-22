@@ -513,9 +513,21 @@ def parse_fluke_file(csv_path: str) -> Tuple[Optional[FlukeParsed], Optional[str
         If failed: (None, error_message)
     """
     try:
-        with open(csv_path, 'r', encoding='utf-8-sig') as f:
-            reader = csv.reader(f)
-            rows = list(reader)
+        # Try multiple encodings to handle different CSV file formats
+        rows = None
+        last_error = None
+        for encoding in ['utf-8-sig', 'utf-8', 'windows-1252', 'latin-1', 'iso-8859-1']:
+            try:
+                with open(csv_path, 'r', encoding=encoding) as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+                break  # Success, exit loop
+            except (UnicodeDecodeError, UnicodeError) as e:
+                last_error = e
+                continue  # Try next encoding
+
+        if rows is None:
+            return None, f"Could not decode CSV file with any common encoding. Last error: {last_error}"
 
         if len(rows) < 10:
             return None, "CSV file too short"
@@ -1224,19 +1236,24 @@ class MainWindow(QMainWindow):
         # Logo (optional)
         if os.path.exists("hnz_logo.png"):
             logo_label = QLabel()
+            logo_label.setStyleSheet("background: transparent;")
             pixmap = QPixmap("hnz_logo.png")
-            scaled = pixmap.scaledToWidth(80, Qt.SmoothTransformation)
+            scaled = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
             logo_label.setPixmap(scaled)
+            logo_label.setFixedSize(60, 60)
+            logo_label.setScaledContents(False)
             header_layout.addWidget(logo_label)
 
         # Title with subtitle
         title_container = QWidget()
+        title_container.setStyleSheet("background: transparent;")
         title_layout = QVBoxLayout(title_container)
         title_layout.setSpacing(5)
         title_layout.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel("EST Converter")
         title.setStyleSheet("""
+            background: transparent;
             color: white;
             font-size: 24pt;
             font-weight: 700;
@@ -1245,6 +1262,7 @@ class MainWindow(QMainWindow):
 
         subtitle = QLabel("Fluke ESA615 Electrical Safety Testing")
         subtitle.setStyleSheet("""
+            background: transparent;
             color: rgba(255, 255, 255, 0.9);
             font-size: 11pt;
             font-weight: 400;
@@ -1252,6 +1270,7 @@ class MainWindow(QMainWindow):
 
         version_label = QLabel("Version 3.3 Baseline")
         version_label.setStyleSheet("""
+            background: transparent;
             color: rgba(255, 255, 255, 0.7);
             font-size: 9pt;
             margin-top: 3px;
@@ -1273,23 +1292,29 @@ class MainWindow(QMainWindow):
                 border: 2px solid #e5e7eb;
                 border-radius: 12px;
                 padding: 15px;
+                margin-top: -1px;
             }
             QTabBar::tab {
                 background: #f3f4f6;
                 color: #4b5563;
-                padding: 12px 24px;
+                padding: 12px 28px;
                 margin-right: 4px;
+                border: 2px solid #e5e7eb;
+                border-bottom: none;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
                 font-weight: 600;
                 font-size: 11pt;
+                min-width: 120px;
             }
             QTabBar::tab:selected {
                 background: white;
                 color: #10b981;
-                border-bottom: 3px solid #10b981;
+                border-color: #e5e7eb;
+                border-bottom: 2px solid white;
+                margin-bottom: -2px;
             }
-            QTabBar::tab:hover {
+            QTabBar::tab:hover:!selected {
                 background: #e5e7eb;
             }
         """)
@@ -1303,6 +1328,7 @@ class MainWindow(QMainWindow):
 
             esa_label = QLabel("🔌 ESA615 Device Files")
             esa_label.setStyleSheet("""
+                background: transparent;
                 font-weight: 700;
                 font-size: 12pt;
                 color: #10b981;
@@ -1328,6 +1354,7 @@ class MainWindow(QMainWindow):
 
         file_group_label = QLabel("📁 CSV Files for Conversion")
         file_group_label.setStyleSheet("""
+            background: transparent;
             font-weight: 700;
             font-size: 12pt;
             color: #3b82f6;
